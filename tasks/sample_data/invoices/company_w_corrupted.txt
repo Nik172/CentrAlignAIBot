@@ -1,0 +1,7 @@
+INVOICE
+
+Company: Company W
+Invoice Number: INV-4004
+Invoice Date: 2025-10-05
+Amount: N/A
+Due Date: 2025-11-05

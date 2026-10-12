@@ -1,0 +1,14 @@
+{
+  "task_id": "invoice_entry_companyX",
+  "goal": "Find the invoice from Company X, extract the amount and due date, and enter it into the internal system. Confirm it was recorded correctly before finishing.",
+  "enabled_tools": ["file_reader", "internal_api"],
+  "env_base_url": "http://localhost:5001",
+  "data_dir": "tasks/sample_data/invoices",
+  "company_memory_doc": "tasks/company_memory_docs/policy.md",
+  "max_steps": 12,
+  "max_retries_per_action": 2,
+  "success_criteria": [
+    {"id": "c1", "description": "Internal system has the correct amount", "check_type": "api_query", "check_target": "/invoices", "expected_field": "amount", "expected_source": "amount"},
+    {"id": "c2", "description": "Internal system has the correct due date", "check_type": "api_query", "check_target": "/invoices", "expected_field": "due_date", "expected_source": "due_date"}
+  ]
+}

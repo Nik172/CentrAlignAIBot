@@ -1,0 +1,7 @@
+INVOICE
+
+Company: Company X
+Invoice Number: INV-1001
+Invoice Date: 2025-10-15
+Amount: 42000
+Due Date: 2025-11-15

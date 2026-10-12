@@ -1,0 +1,7 @@
+INVOICE
+
+Company: Company Z
+Invoice Number: INV-3003
+Invoice Date: 2025-09-20
+Amount: 27750
+Payment Due: 2025-10-20

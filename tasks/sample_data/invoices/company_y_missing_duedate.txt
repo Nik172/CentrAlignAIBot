@@ -1,0 +1,6 @@
+INVOICE
+
+Company: Company Y
+Invoice Number: INV-2002
+Invoice Date: 2025-10-01
+Amount: 18500
