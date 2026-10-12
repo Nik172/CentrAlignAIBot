@@ -44,8 +44,18 @@ class SuccessCriterion(BaseModel):
     check_type: str = Field(..., description="How to verify this, e.g. 'api_query', 'db_query', 'file_check'.")
     check_target: str = Field(..., description="Endpoint, table, or file path to check against.")
     expected_field: str = Field(..., description="Field name expected to hold the result.")
-    expected_source: str = Field(..., description="Key in working memory holding the expected value to compare against.")
-
+    expected_source: str = Field(
+        default="",
+        description="Key in working memory holding the expected value (used when the expected value is "
+                    "data discovered during execution, e.g. an extracted amount). Ignored if expected_literal is set.",
+    )
+    expected_literal: str | None = Field(
+        default=None,
+        description="A fixed expected value (e.g. 'resolved'), used when the outcome is a known constant "
+                    "rather than discovered data. Takes priority over expected_source.",
+    )
+    query_param_name: str = Field(default="company", description="Query parameter name used to look up the record.")
+    query_param_source: str = Field(default="company", description="Key in working memory providing the query value.")
 
 class Plan(BaseModel):
     steps: list[str] = Field(..., description="Draft sequence of actions. Treated as a hypothesis, not a rigid script.")

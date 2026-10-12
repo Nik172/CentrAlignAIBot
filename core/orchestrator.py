@@ -1,9 +1,8 @@
 """
 The control loop: PLAN -> (ACT -> OBSERVE -> DECIDE)* -> VERIFY -> SUMMARY,
-with ASK_HUMAN as an escape hatch at any point. This is intentionally a
-plain Python loop, not a framework DAG — it needs to support re-reasoning
-every step based on fresh state, which is easiest to reason about (and
-debug live) as explicit control flow.
+with ASK_HUMAN as an escape hatch at any point, and a circuit breaker that
+forces escalation if the same action keeps failing. Plain Python loop, not
+a framework DAG — needs to re-reason every step from fresh state.
 """
 import json
 import time
@@ -39,7 +38,7 @@ class Orchestrator:
         self.max_steps = task_config.get("max_steps", 12)
         self.max_retries_per_action = task_config.get("max_retries_per_action", 2)
 
-        Path(log_dir).mkdir(exist_ok=True)
+        Path(log_dir).mkdir(parents=True, exist_ok=True)
         self.log_path = Path(log_dir) / f"{task_config['task_id']}_{int(time.time())}.jsonl"
 
     def _log(self, event_type: str, data: dict):
@@ -61,6 +60,28 @@ class Orchestrator:
         step_count = 0
         while step_count < self.max_steps:
             step_count += 1
+
+            # Circuit breaker: if an action has failed past the retry limit,
+            # force escalation instead of letting the decision engine keep
+            # trying. Hard safety net — does not depend on the LLM choosing
+            # to ask for help.
+            if self.working_memory.get("circuit_breaker_tripped"):
+                self._log("CIRCUIT_BREAKER_FORCED_ESCALATION", {
+                    "reason": self.working_memory.get("last_error"),
+                })
+                response = self.human_interface.ask(
+                    "I've repeatedly failed the same action and am stopping to avoid looping "
+                    f"indefinitely. Last error: {self.working_memory.get('last_error')}. "
+                    "How should I proceed?",
+                    context=self.working_memory,
+                )
+                self.working_memory["last_human_answer"] = response.answer
+                self.working_memory["circuit_breaker_tripped"] = False
+                self._log("HUMAN_RESPONSE", {
+                    "question": "(circuit breaker escalation)", "answer": response.answer,
+                })
+                continue
+
             decision = self._safe_decide(goal, plan)
             self._log("DECISION", {"step": step_count, "type": decision.type, "reasoning": decision.reasoning})
 
@@ -113,9 +134,6 @@ class Orchestrator:
                              question_for_human="I hit an internal error while deciding what to do next. "
                                                 "Please advise how to proceed.")
 
-        # Guard against structurally inconsistent decisions (e.g. type=act with no
-        # tool_call) — this can happen with weaker models or placeholder/mock output.
-        # Rather than crash, treat it as a signal to escalate.
         if decision.type == DecisionType.ACT and decision.tool_call is None:
             self._log("INVALID_DECISION", {"reason": "type=act but tool_call is None", "raw": decision.reasoning})
             return Decision(type=DecisionType.ASK_HUMAN,
@@ -156,14 +174,17 @@ class Orchestrator:
             "error_message": obs.error_message,
         })
 
-        # Always keep partial data we learned, even on failure (e.g. extraction
-        # that found amount but not due_date) — don't let the agent forget it.
         if isinstance(obs.structured_data, dict) and obs.structured_data:
             self.working_memory.update(obs.structured_data)
 
         if obs.success:
+            # Capture inputs the agent used, not just outputs — lets the
+            # Verifier later look up "which company/customer/record" to
+            # re-check, generically, regardless of task domain.
             if params.get("json_body"):
                 self.working_memory.update(params["json_body"])
+            if params.get("query"):
+                self.working_memory.update(params["query"])
         else:
             self._handle_failure(decision, obs, params)
 

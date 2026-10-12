@@ -1,10 +1,13 @@
 """
 Independent verification: re-queries the actual system state directly,
-rather than trusting the executor's self-reported success. This is the
-single most important reliability mechanism in the system — it's what
-catches "the agent thinks it worked but the DB disagrees" scenarios.
-Deterministic, rule-based — no LLM call, so verification can't be fooled
-by model hallucination either.
+rather than trusting the executor's self-reported success. Deterministic,
+rule-based — no LLM call, so verification can't be fooled by hallucination.
+
+Generic by design: which query param to use for lookup, and whether the
+expected value is discovered-at-runtime data or a fixed constant, are both
+configurable per criterion — this is what lets the same Verifier work
+unmodified across different task domains (invoices keyed by company,
+tickets keyed by customer, etc.).
 """
 from core.schemas import SuccessCriterion, CriterionResult, Verdict, VerdictStatus
 from core.tools.api_tool import ApiTool
@@ -22,9 +25,10 @@ class Verifier:
                                                 notes=f"Unsupported check_type: {c.check_type}"))
                 continue
 
+            query_value = working_memory.get(c.query_param_source, "")
             obs = self.api_tool.execute({
                 "method": "GET", "path": c.check_target,
-                "query": {"company": working_memory.get("company", "")},
+                "query": {c.query_param_name: query_value},
             })
             if not obs.success:
                 results.append(CriterionResult(criterion_id=c.id, passed=False,
@@ -37,9 +41,9 @@ class Verifier:
                                                 notes="No matching record found in system."))
                 continue
 
-            record = records[0]  # most recent (API returns DESC order)
+            record = records[0]
             actual = record.get(c.expected_field, "<MISSING>")
-            expected = working_memory.get(c.expected_source, "<UNKNOWN>")
+            expected = c.expected_literal if c.expected_literal is not None else working_memory.get(c.expected_source, "<UNKNOWN>")
             passed = self._values_match(actual, expected)
             results.append(CriterionResult(
                 criterion_id=c.id, passed=passed, actual_value=actual, expected_value=expected,

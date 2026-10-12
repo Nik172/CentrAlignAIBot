@@ -26,12 +26,12 @@ class InvoiceIn(BaseModel):
 @app.get("/")
 def dashboard(request: Request):
     invoices = db.get_invoices()
-    return templates.TemplateResponse("dashboard.html", {"request": request, "invoices": invoices})
+    return templates.TemplateResponse(request, "dashboard.html", {"invoices": invoices})
 
 
 @app.get("/form")
 def form_page(request: Request):
-    return templates.TemplateResponse("form.html", {"request": request})
+    return templates.TemplateResponse(request, "form.html", {})
 
 
 @app.post("/form/submit")

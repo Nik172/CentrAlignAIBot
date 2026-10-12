@@ -117,25 +117,52 @@ class GeminiClient(LLMClient):
 # ---------------------------------------------------------------------------
 
 class GroqClient(LLMClient):
-    def __init__(self, api_key: str, model: str):
+    """
+    Groq model names shift over time and availability varies by account/key,
+    so we try a list of candidates (pulled from what's actually confirmed
+    available on this key via /v1/models) and cache whichever one works for
+    subsequent calls — same resilience pattern as GeminiClient.
+    """
+    CANDIDATE_MODELS = [
+        "openai/gpt-oss-20b",
+        "openai/gpt-oss-120b",
+        "qwen/qwen3-32b",
+    ]
+
+    def __init__(self, api_key: str, model: str | None = None):
         from groq import Groq
         self.client = Groq(api_key=api_key)
-        self.model = model
+        self._working_model: str | None = model
 
     def structured_call(self, system_prompt: str, user_prompt: str, schema: type[T]) -> T:
         schema_hint = json.dumps(schema.model_json_schema())
-        response = self.client.chat.completions.create(
-            model=self.model,
-            response_format={"type": "json_object"},
-            messages=[
-                {
-                    "role": "system",
-                    "content": f"{system_prompt}\n\nRespond ONLY with valid JSON matching this schema:\n{schema_hint}",
-                },
-                {"role": "user", "content": user_prompt},
-            ],
-        )
-        return schema.model_validate_json(response.choices[0].message.content)
+        candidates = [self._working_model] if self._working_model else []
+        candidates += [m for m in self.CANDIDATE_MODELS if m != self._working_model]
+
+        last_error: Exception | None = None
+        for model_name in candidates:
+            if not model_name:
+                continue
+            try:
+                response = self.client.chat.completions.create(
+                    model=model_name,
+                    response_format={"type": "json_object"},
+                    messages=[
+                        {
+                            "role": "system",
+                            "content": f"{system_prompt}\n\nRespond ONLY with valid JSON matching this schema:\n{schema_hint}",
+                        },
+                        {"role": "user", "content": user_prompt},
+                    ],
+                )
+                self._working_model = model_name
+                return schema.model_validate_json(response.choices[0].message.content)
+            except Exception as e:
+                print(f"[GroqClient] model '{model_name}' failed: {e}")
+                last_error = e
+                continue
+
+        raise RuntimeError(f"All Groq model candidates failed. Last error: {last_error}")
 
 
 # ---------------------------------------------------------------------------

@@ -20,7 +20,7 @@ class Config:
     GROQ_API_KEY: str = _get("GROQ_API_KEY", "PLACEHOLDER_GROQ_KEY")
 
     GEMINI_MODEL: str = _get("GEMINI_MODEL", "gemini-2.5-flash")
-    GROQ_MODEL: str = _get("GROQ_MODEL", "llama-3.3-70b-versatile")
+    GROQ_MODEL: str = _get("GROQ_MODEL", "openai/gpt-oss-20b")
 
     @property
     def has_real_gemini_key(self) -> bool:
